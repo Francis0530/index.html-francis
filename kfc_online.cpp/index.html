@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>KFC Online Ordering — Full System</title>
+<style>
+  :root { --brand:#d71a28; --brand-dark:#a7131f; --card:#fff; --muted:#666; --radius:12px; --shadow:0 8px 24px rgba(0,0,0,0.08); font-family:"Poppins",sans-serif; }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:#fff7f7;color:#222;}
+  header{background:linear-gradient(180deg,var(--brand),var(--brand-dark));color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;}
+  header h1{margin:0;font-size:20px}
+  main{flex:1;padding:20px;max-width:1100px;margin:auto;width:100%;}
+  footer{background:var(--brand);color:white;text-align:center;padding:12px;position:fixed;left:0;bottom:0;width:100%;}
+
+  .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);}
+  input[type="text"],input[type="email"],input[type="password"], select, textarea {
+    width:100%;padding:10px;border-radius:10px;border:1px solid #eee;margin:8px 0;font-size:14px;
+  }
+  .btn{border:0;padding:8px 12px;border-radius:10px;cursor:pointer;font-weight:600;}
+  .btn-primary{background:var(--brand);color:white;}
+  .btn-ghost{background:#fff;border:1px solid #eee;}
+  .link{color:var(--brand);cursor:pointer;font-weight:600;font-size:14px;display:inline-block;margin-top:8px}
+
+  /* menu */
+  #menuSection{display:none;margin-top:20px;}
+  .menu-grid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;}
+  .menu-item{width:220px;background:#fff;border-radius:12px;padding:10px;text-align:center;box-shadow:0 4px 10px rgba(0,0,0,0.08);}
+  .menu-item img{width:100%;height:140px;object-fit:cover;border-radius:8px}
+  .menu-item .name{font-weight:700;margin-top:6px}
+  .menu-item .price{color:var(--muted);font-size:14px;margin-bottom:8px}
+
+  /* cart drawer */
+  .cart-drawer{position:fixed;top:0;right:0;width:420px;max-width:95vw;height:100vh;background:white;transform:translateX(100%);transition:transform .3s;box-shadow:-10px 0 30px rgba(0,0,0,0.2);display:flex;flex-direction:column;z-index:100;}
+  .cart-drawer.open{transform:translateX(0)}
+  .cart-header{background:var(--brand);color:white;padding:16px;display:flex;justify-content:space-between;align-items:center;}
+  .cart-body{flex:1;overflow:auto;padding:12px;}
+  .cart-footer{padding:12px;border-top:1px solid #eee;display:flex;gap:10px;flex-direction:column}
+
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:.25s;z-index:99;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+
+  /* admin / staff */
+  #adminSection,#staffSection,#ordersHistorySection{display:none;margin-top:20px;}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #eee;padding:8px;text-align:left;font-size:13px}
+  th{background:#fff0f0}
+
+  /* small */
+  .row{display:flex;gap:12px}
+  .col{flex:1}
+  .text-muted{color:var(--muted);font-size:13px}
+  .center{text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>🍗 KFC Online Ordering</h1>
+  <div>
+    <span id="welcomeText">Please log in</span>
+    &nbsp; <button id="headerCartBtn" class="btn btn-ghost" onclick="openCart()">🛒 <span id="cartCount">0</span></button>
+    &nbsp; <button id="logoutBtn" class="btn btn-ghost" style="display:none" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<main>
+  <!-- AUTH -->
+  <div id="authArea" style="max-width:480px;margin:auto">
+    <div id="loginCard" class="card">
+      <h2>Login</h2>
+      <input id="loginEmail" type="email" placeholder="Email">
+      <input id="loginPassword" type="password" placeholder="Password">
+      <div class="row">
+        <button class="btn btn-primary" onclick="login()">Login</button>
+        <button class="btn btn-ghost" onclick="prefillAdmin()">Use Admin</button>
+        <button class="btn btn-ghost" onclick="prefillStaff()">Use Staff</button>
+      </div>
+      <div><span class="link" onclick="showRegister()">Create an account</span></div>
+    </div>
+
+    <div id="registerCard" class="card" style="display:none;margin-top:16px;">
+      <h2>Create Account</h2>
+      <input id="regName" type="text" placeholder="Full Name">
+      <input id="regEmail" type="email" placeholder="Email">
+      <input id="regPassword" type="password" placeholder="Password (≥4 chars)">
+      <label class="text-muted">Role: Customer (default)</label>
+      <button class="btn btn-primary" onclick="register()">Create Account</button>
+      <div><span class="link" onclick="showLogin()">Back to Login</span></div>
+    </div>
+  </div>
+
+  <!-- CUSTOMER MENU -->
+  <section id="menuSection">
+    <h2>Our Menu</h2>
+    <div class="menu-grid" id="menuContainer"></div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button class="btn btn-primary" onclick="openCart()">🛒 View Cart</button>
+      <button class="btn" onclick="viewMyOrders()">📜 View My Orders</button>
+      <button class="btn" onclick="logout()">🔒 Logout</button>
+    </div>
+  </section>
+
+  <!-- ORDER HISTORY (Customer) -->
+  <section id="ordersHistorySection" style="display:none;">
+    <h2>My Orders</h2>
+    <div id="myOrdersList" class="card"></div>
+    <div style="margin-top:12px;"><button class="btn" onclick="backToMenu()">Back to Menu</button></div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="adminSection">
+    <h2>Admin Dashboard</h2>
+    <h3>All Orders</h3>
+    <div class="card" id="adminOrdersContainer"></div>
+    <div style="margin-top:12px;font-weight:700" id="adminTotalSales"></div>
+
+    <h3 style="margin-top:16px">Manage Staff</h3>
+    <div class="card">
+      <div class="row">
+        <input id="staffName" type="text" placeholder="Staff name">
+        <input id="staffEmail" type="email" placeholder="Staff email">
+      </div>
+      <div class="row">
+        <input id="staffPassword" type="password" placeholder="Staff password">
+        <button class="btn btn-primary" onclick="addStaff()">Add Staff</button>
+      </div>
+      <div style="margin-top:12px;">
+        <div id="staffListContainer"></div>
+      </div>
+      <div style="margin-top:12px;"><button class="btn" onclick="logout()">Logout</button></div>
+    </div>
+  </section>
+
+  <!-- STAFF -->
+  <section id="staffSection">
+    <h2>Staff Dashboard</h2>
+    <h3>Orders (Editable)</h3>
+    <div class="card" id="staffOrdersContainer"></div>
+    <div style="margin-top:12px;"><button class="btn" onclick="logout()">Logout</button></div>
+  </section>
+</main>
+
+<footer>© 2025 KFC Philippines | Designed by You 🍗</footer>
+
+<!-- CART DRAWER -->
+<div id="overlay" class="overlay" onclick="closeCart()"></div>
+<aside id="cartDrawer" class="cart-drawer" aria-hidden="true">
+  <div class="cart-header">
+    <h3>🛒 Your Cart</h3>
+    <div><button class="btn" onclick="closeCart()">✕</button></div>
+  </div>
+  <div class="cart-body" id="cartBody"></div>
+  <div class="cart-footer">
+    <div class="text-muted">Fill payment details to complete order</div>
+    <button class="btn btn-primary" onclick="beginCheckout()">Checkout / Pay</button>
+  </div>
+</aside>
+
+<!-- PAYMENT MODAL WITH MULTIPLE OPTIONS -->
+<div id="paymentModal" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:200;background:white;padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.25);width:360px;">
+  <h3>Payment Details</h3>
+  <div id="paymentNote" class="text-muted">This is a simulated payment — no real transactions.</div>
+
+  <label for="payMethod">Payment Method:</label>
+  <select id="payMethod" onchange="renderPaymentFields()">
+    <option value="card">Card</option>
+    <option value="gcash">GCash</option>
+    <option value="paymaya">PayMaya</option>
+    <option value="cod">Cash on Delivery</option>
+  </select>
+
+  <div id="paymentFields" style="margin-top:10px;">
+    <!-- dynamic fields inserted here -->
+  </div>
+
+  <div style="margin-top:8px;display:flex;gap:8px;">
+    <button class="btn btn-primary" onclick="submitPayment()">Pay Now</button>
+    <button class="btn" onclick="closePayment()">Cancel</button>
+  </div>
+</div>
+
+<script>
+/* ======== DATA & STATE ======== */
+const USERS_KEY = 'kfc_users_v1';
+const ORDERS_KEY = 'kfc_orders_v1';
+const menuItems=[ // same menu as before
+  {id:'spag',name:'Spaghetti Bowl',price:80,img:'photos/KFC Buckets.jpg'},
+  {id:'1pc',name:'1-pc Chicken Meal',price:120,img:'photos/kfc-1pc-chicken-meal-1024x749.jpg'},
+  {id:'mash',name:'Mashed Potato Poppers',price:50,img:'photos/kfc-mashed-potato-poppers-031725-4171bdd1b23844e1931bb7da6e072527.jpg'},
+  {id:'zinger',name:'Zinger Burger',price:90,img:'photos/BURGER.jpg'},
+  {id:'fries',name:'KFC Bucket',price:600,img:'photos/Spaghetti-Bowl Deluxe-768x427.png'},
+  {id:'float',name:'Famous Bowl',price:120,img:'photos/famous bowl.webp'},
+  {id:'2pc',name:'2-pc Chicken Meal',price:199,img:'photos/kfc-2pc-fully-loaded-meals.webp'},
+  {id:'ricebowl',name:'Twister wrap',price:95,img:'photos/twister wrap.jpg'}
+];
+
+let cart = [];
+let currentUser = null;
+
+function loadUsers(){ try { return JSON.parse(localStorage.getItem(USERS_KEY)||'[]'); } catch(e){ return []; } }
+function saveUsers(u){ localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+function loadOrders(){ try { return JSON.parse(localStorage.getItem(ORDERS_KEY)||'[]'); } catch(e){ return []; } }
+function saveOrders(o){ localStorage.setItem(ORDERS_KEY, JSON.stringify(o)); }
+
+window.onload = ()=> {
+  let users = loadUsers();
+  if(!users.find(u=>u.role==='admin')) users.push({name:'Admin',email:'admin@kfc.com',password:'admin123',role:'admin'});
+  if(!users.find(u=>u.role==='staff')) users.push({name:'Staff',email:'staff@kfc.com',password:'staff123',role:'staff'});
+  saveUsers(users);
+  updateCartCount();
+};
+
+/* ======== MENU & CART ======== */
+function renderMenu(){
+  const m = document.getElementById('menuContainer'); m.innerHTML = '';
+  menuItems.forEach(it=>{
+    const el = document.createElement('div'); el.className='menu-item';
+    el.innerHTML = `<img src="${it.img}" alt="${it.name}" onerror="this.style.opacity=.6">
+      <div class="name">${it.name}</div>
+      <div class="price">₱${it.price}</div>
+      <div style="margin-top:8px;"><button class="btn btn-primary" onclick="addToCart('${it.id}')">Add to Cart</button></div>`;
+    m.appendChild(el);
+  });
+}
+
+function addToCart(id){ const item = menuItems.find(i=>i.id===id); if(!item) return; const ex = cart.find(c=>c.id===id); if(ex) ex.qty++; else cart.push({...item, qty:1}); renderCart(); openCart(); updateCartCount();}
+function renderCart(){ const c=document.getElementById('cartBody'); if(cart.length===0){c.innerHTML='<p class="text-muted">No items in cart.</p>'; return;} c.innerHTML=''; cart.forEach(i=>{ const row=document.createElement('div'); row.style.padding='8px 0'; row.style.borderBottom='1px solid #eee'; row.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center">
+  <div><strong>${i.name}</strong><div class="text-muted">₱${i.price} each</div></div>
+  <div style="text-align:right">
+    <div>Qty: ${i.qty}</div>
+    <div style="margin-top:6px">₱${i.price*i.qty}</div>
+    <div style="margin-top:6px"><button class="btn" style="background:#eee" onclick="decQty('${i.id}')">−</button>
+    <button class="btn" style="background:#eee" onclick="incQty('${i.id}')">+</button>
+    <button class="btn" style="background:#eee" onclick="removeItem('${i.id}')">Remove</button></div>
+  </div>
+</div>`; c.appendChild(row); }); updateCartCount();}
+function incQty(id){ const it=cart.find(c=>c.id===id); if(it){it.qty++; renderCart();} }
+function decQty(id){ const it=cart.find(c=>c.id===id); if(it){ it.qty = Math.max(1,it.qty-1); renderCart(); } }
+function removeItem(id){ cart = cart.filter(c=>c.id!==id); renderCart(); updateCartCount(); }
+function updateCartCount(){ document.getElementById('cartCount').textContent = cart.reduce((s,i)=>s+i.qty,0); }
+
+/* ======== AUTH ======== */
+function showRegister(){ document.getElementById('loginCard').style.display='none'; document.getElementById('registerCard').style.display='block'; }
+function showLogin(){ document.getElementById('registerCard').style.display='none'; document.getElementById('loginCard').style.display='block'; }
+function register(){
+  const n=document.getElementById('regName')?.value?.trim(); 
+  const e=document.getElementById('regEmail')?.value?.trim().toLowerCase(); 
+  const p=document.getElementById('regPassword')?.value||''; 
+  if(!n||!e||!p) return alert('Please fill all fields'); 
+  if(p.length<4) return alert('Password must be at least 4 chars'); 
+  let users=loadUsers(); 
+  if(users.find(u=>u.email===e)) return alert('Email already exists'); 
+  users.push({name:n,email:e,password:p,role:'customer'}); 
+  saveUsers(users); 
+  alert('Account created — please login.'); showLogin();
+}
+function login(){
+  const e=document.getElementById('loginEmail')?.value?.trim().toLowerCase();
+  const p=document.getElementById('loginPassword')?.value||'';
+  if(!e||!p) return alert('Enter email & password');
+  let users=loadUsers(); const u=users.find(x=>x.email===e && x.password===p);
+  if(!u) return alert('Invalid credentials');
+  currentUser=u;
+  document.getElementById('authArea').style.display='none';
+  document.getElementById('logoutBtn').style.display='inline-block';
+  if(u.role==='admin'){ showAdmin(); }
+  else if(u.role==='staff'){ showStaff(); }
+  else { showCustomer(); }
+}
+function prefillAdmin(){ document.getElementById('loginEmail').value='admin@kfc.com'; document.getElementById('loginPassword').value='admin123'; }
+function prefillStaff(){ document.getElementById('loginEmail').value='staff@kfc.com'; document.getElementById('loginPassword').value='staff123'; }
+function logout(){
+  currentUser=null; cart=[]; renderCart(); updateCartCount();
+  document.getElementById('menuSection').style.display='none';
+  document.getElementById('adminSection').style.display='none';
+  document.getElementById('staffSection').style.display='none';
+  document.getElementById('ordersHistorySection').style.display='none';
+  document.getElementById('authArea').style.display='block';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('welcomeText').textContent='Please log in';
+}
+
+/* ======== CUSTOMER ======== */
+function showCustomer(){ document.getElementById('menuSection').style.display='block'; document.getElementById('ordersHistorySection').style.display='none'; document.getElementById('adminSection').style.display='none'; document.getElementById('staffSection').style.display='none'; document.getElementById('welcomeText').textContent=`Welcome, ${currentUser.name}`; renderMenu(); }
+function viewMyOrders(){ 
+  if(!currentUser||currentUser.role!=='customer') return alert('Please login as customer.');
+  document.getElementById('menuSection').style.display='none';
+  document.getElementById('ordersHistorySection').style.display='block';
+  const all=loadOrders().filter(o=>o.customerEmail===currentUser.email);
+  const c=document.getElementById('myOrdersList');
+  if(all.length===0){ c.innerHTML='<div class="text-muted">You have not placed any orders yet.</div>'; return; }
+  let html='<div>';
+  all.slice().reverse().forEach(o=>{
+    html+=`<div style="margin-bottom:12px;padding:12px;border-radius:10px;border:1px solid #f0f0f0;background:#fff;">
+      <div style="font-weight:700">Order ${o.id} — ₱${o.total}</div>
+      <div class="text-muted" style="font-size:13px">${new Date(o.payment.timestamp).toLocaleString()}</div>
+      <div style="margin-top:8px">${o.items.map(it=>`${it.name} x${it.qty} — ₱${it.price*it.qty}`).join('<br>')}</div>
+      <div style="margin-top:8px;font-size:13px">Paid: ${o.payment.method==='card'?`Card ending ${o.payment.cardLast}`:o.payment.method} • Address: ${o.payment.address||'—'}</div>
+    </div>`;
+  });
+  html+='</div>'; c.innerHTML=html; 
+}
+function backToMenu(){ document.getElementById('ordersHistorySection').style.display='none'; document.getElementById('menuSection').style.display='block'; }
+
+/* ======== ADMIN ======== */
+function showAdmin(){ document.getElementById('menuSection').style.display='none'; document.getElementById('adminSection').style.display='block'; document.getElementById('staffSection').style.display='none'; document.getElementById('ordersHistorySection').style.display='none'; document.getElementById('welcomeText').textContent=`Admin: ${currentUser.name}`; renderAdmin(); }
+function renderAdmin(){
+  const orders = loadOrders();
+  const container = document.getElementById('adminOrdersContainer');
+  if(orders.length===0){ container.innerHTML='<div class="text-muted">No orders yet.</div>'; } 
+  else {
+    let html='<table><tr><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Address</th></tr>';
+    let totalSales=0;
+    orders.forEach(o=>{
+      const items=o.items.map(i=>`${i.name} x${i.qty}`).join(', ');
+      html+=`<tr><td>${o.customerName} (${o.customerEmail})</td><td>${items}</td><td>₱${o.total}</td><td>${o.payment?.method||'—'}</td><td>${o.payment?.address||'—'}</td></tr>`;
+      totalSales+=o.total;
+    });
+    html+='</table>';
+    container.innerHTML=html;
+    document.getElementById('adminTotalSales').textContent=`Total Sales: ₱${totalSales}`;
+  }
+
+  // staff list
+  const users = loadUsers().filter(u=>u.role==='staff');
+  const staffContainer = document.getElementById('staffListContainer');
+  if(users.length===0) staffContainer.innerHTML='<div class="text-muted">No staff accounts.</div>';
+  else{
+    let h='<table><tr><th>Name</th><th>Email</th><th>Action</th></tr>';
+    users.forEach(s=>h+=`<tr><td>${s.name}</td><td>${s.email}</td><td><button class="btn" onclick="deleteStaff('${s.email}')">Delete</button></td></tr>`);
+    h+='</table>'; staffContainer.innerHTML=h;
+  }
+}
+function addStaff(){ const n=document.getElementById('staffName')?.value?.trim(); const e=document.getElementById('staffEmail')?.value?.trim().toLowerCase(); const p=document.getElementById('staffPassword')?.value||''; if(!n||!e||!p) return alert('Fill all staff fields'); let users=loadUsers(); if(users.find(u=>u.email===e)) return alert('Email already exists'); users.push({name:n,email:e,password:p,role:'staff'}); saveUsers(users); alert('Staff added'); renderAdmin(); }
+function deleteStaff(email){ if(!confirm('Delete this staff account?')) return; let users=loadUsers().filter(u=>!(u.email===email && u.role==='staff')); saveUsers(users); renderAdmin(); }
+
+/* ======== STAFF ======== */
+function showStaff(){ document.getElementById('menuSection').style.display='none'; document.getElementById('adminSection').style.display='none'; document.getElementById('staffSection').style.display='block'; document.getElementById('ordersHistorySection').style.display='none'; document.getElementById('welcomeText').textContent=`Staff: ${currentUser.name}`; renderStaffOrders(); }
+function renderStaffOrders(){
+  const orders = loadOrders();
+  const container = document.getElementById('staffOrdersContainer');
+  if(orders.length===0){ container.innerHTML='<div class="text-muted">No orders yet.</div>'; return; }
+  let html='<table><tr><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Action</th></tr>';
+  orders.forEach((o, idx)=>{
+    const items = o.items.map(i=>`${i.name} x${i.qty}`).join(', ');
+    html+=`<tr>
+      <td>${o.customerName}</td>
+      <td>${items}</td>
+      <td>₱${o.total}</td>
+      <td>${o.payment?.method||'—'}</td>
+      <td>
+        <button class="btn" onclick="staffEditOrder(${idx})">Edit</button>
+      </td>
+    </tr>`;
+  });
+  html+='</table>'; container.innerHTML=html;
+}
+function staffEditOrder(index){
+  const orders = loadOrders();
+  const order = orders[index];
+  if(!order) return;
+  order.items.forEach(i=>{
+    let newQty = prompt(`Qty for ${i.name}:`, i.qty);
+    if(newQty!==null) i.qty = Math.max(1, parseInt(newQty)||i.qty);
+  });
+  order.total = order.items.reduce((s,i)=>s+i.price*i.qty,0);
+  saveOrders(orders);
+  renderStaffOrders();
+}
+
+/* ======== CHECKOUT & PAYMENT ======== */
+function beginCheckout(){ if(!currentUser || currentUser.role!=='customer') return alert('Please login as customer to checkout.'); if(cart.length===0) return alert('Your cart is empty.'); document.getElementById('paymentModal').style.display='block'; renderPaymentFields(); }
+function closePayment(){ document.getElementById('paymentModal').style.display='none'; }
+
+function renderPaymentFields(){
+  const method = document.getElementById('payMethod').value;
+  const f = document.getElementById('paymentFields');
+  f.innerHTML = '';
+  if(method==='card'){
+    f.innerHTML = `<input id="payName" type="text" placeholder="Cardholder name">
+                   <input id="payCard" type="text" placeholder="Card number (16 digits)">
+                   <div class="row">
+                     <input id="payExp" type="text" placeholder="MM/YY">
+                     <input id="payCVC" type="text" placeholder="CVC">
+                   </div>
+                   <input id="payAddress" type="text" placeholder="Delivery address">`;
+  } else if(method==='gcash' || method==='paymaya'){
+    f.innerHTML = `<input id="payMobile" type="text" placeholder="Mobile number">
+                   <input id="payAddress" type="text" placeholder="Delivery address">`;
+  } else if(method==='cod'){
+    f.innerHTML = `<input id="payAddress" type="text" placeholder="Delivery address">`;
+  }
+}
+
+function submitPayment(){
+  const method = document.getElementById('payMethod').value;
+  let payment = { method, timestamp:new Date().toISOString() };
+  if(method==='card'){
+    const name=document.getElementById('payName')?.value?.trim();
+    const card=document.getElementById('payCard')?.value?.trim();
+    const exp=document.getElementById('payExp')?.value?.trim();
+    const cvc=document.getElementById('payCVC')?.value?.trim();
+    const address=document.getElementById('payAddress')?.value?.trim();
+    if(!name||!card||!exp||!cvc||!address) return alert('Please fill all payment fields');
+    payment = {...payment, name, cardLast:card.slice(-4), address};
+  } else if(method==='gcash' || method==='paymaya'){
+    const mobile=document.getElementById('payMobile')?.value?.trim();
+    const address=document.getElementById('payAddress')?.value?.trim();
+    if(!mobile||!address) return alert('Please fill all payment fields');
+    payment = {...payment, mobile, address};
+  } else if(method==='cod'){
+    const address=document.getElementById('payAddress')?.value?.trim();
+    if(!address) return alert('Please fill delivery address');
+    payment = {...payment, address};
+  }
+  closePayment();
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const order = { id:'ord_'+Date.now(), customerName:currentUser.name, customerEmail:currentUser.email, items:cart.map(i=>({id:i.id,name:i.name,price:i.price,qty:i.qty})), total, payment };
+  const orders = loadOrders(); orders.push(order); saveOrders(orders);
+  alert(`Order placed! Total: ₱${order.total}\nPayment method: ${payment.method}`);
+  cart=[]; renderCart(); updateCartCount();
+  viewMyOrders();
+}
+
+/* ======== UI HELPERS ======== */
+function openCart(){ document.getElementById('overlay').classList.add('show'); document.getElementById('cartDrawer').classList.add('open'); renderCart(); }
+function closeCart(){ document.getElementById('overlay').classList.remove('show'); document.getElementById('cartDrawer').classList.remove('open'); }
+</script>
+</body>
+</html>
